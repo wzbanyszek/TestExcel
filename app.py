@@ -2,83 +2,57 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-# 1. Konfiguracja strony
-st.set_page_config(page_title="Edytor Excel PRO", layout="wide", page_icon="📊")
+st.set_page_config(page_title="Edytor Excel", layout="wide")
 
-st.title("📊 Interaktywny Edytor Arkuszy Excel")
-st.markdown("""
-Ta aplikacja pozwala na:
-1. **Wczytanie** istniejącego pliku Excel.
-2. **Edycję** danych (dodawanie wierszy, zmianę wartości).
-3. **Pobranie** poprawionego pliku na dysk.
-""")
-
-# --- 2. LOGIKA WCZYTYWANIA DANYCH ---
-
-# Inicjalizacja stanu sesji, aby dane nie znikały
+# --- 1. INICJALIZACJA STANU ---
 if 'df_editor' not in st.session_state:
-    # Dane startowe, jeśli nic nie wgrano
-    st.session_state.df_editor = pd.DataFrame({
-        "Produkt": ["Przykład 1", "Przykład 2"],
-        "Cena": [100, 200],
-        "Ilość": [10, 5]
-    })
+    st.session_state.df_editor = None
+if 'original_filename' not in st.session_state:
+    st.session_state.original_filename = "nowy_arkusz.xlsx"
 
-# Widget do wgrywania pliku
-uploaded_file = st.file_uploader("Wybierz plik Excel (.xlsx)", type=["xlsx"])
+st.title("📂 Edytor z zachowaniem nazwy")
 
-if uploaded_file is not None:
-    try:
-        # Wczytujemy plik i zapisujemy go do stanu sesji
-        file_df = pd.read_excel(uploaded_file)
-        st.session_state.df_editor = file_df
-        st.success("Pomyślnie wczytano plik!")
-    except Exception as e:
-        st.error(f"Błąd podczas wczytywania pliku: {e}")
+# --- 2. WCZYTYWANIE ---
+uploaded_file = st.file_uploader("Wgraj plik", type=["xlsx"])
 
-# --- 3. INTERAKTYWNY EDYTOR ---
+if uploaded_file:
+    # Zapamiętujemy nazwę tylko raz przy wgraniu
+    st.session_state.original_filename = uploaded_file.name
+    # Wczytujemy dane tylko jeśli jeszcze ich nie ma w sesji (żeby edycja nie znikała)
+    if st.session_state.df_editor is None:
+        st.session_state.df_editor = pd.read_excel(uploaded_file)
 
-st.subheader("📝 Edytuj dane poniżej:")
-
-# Główny edytor danych
-# Zmiany są automatycznie zapisywane do zmiennej 'edited_df'
-edited_df = st.data_editor(
-    st.session_state.df_editor,
-    num_rows="dynamic",  # Pozwala dodawać i usuwać wiersze (ikona kosza i '+')
-    use_container_width=True,
-    hide_index=True,
-    key="main_editor"
-)
-
-# --- 4. EKSPORT I POBIERANIE ---
-
-def to_excel(df):
-    """Konwertuje DataFrame do bajtów pliku Excel."""
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Dane_z_Edytora')
-    return output.getvalue()
-
-st.divider()
-col1, col2 = st.columns([1, 4])
-
-with col1:
-    # Przygotowanie danych do pobrania
-    excel_data = to_excel(edited_df)
-    
-    st.download_button(
-        label="📥 Pobierz jako Excel",
-        data=excel_data,
-        file_name="zaktualizowane_dane.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        help="Kliknij, aby zapisać wprowadzone zmiany do nowego pliku."
+# --- 3. EDYCJA ---
+if st.session_state.df_editor is not None:
+    edited_df = st.data_editor(
+        st.session_state.df_editor,
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        key="editor"
     )
 
-with col2:
-    if st.button("Wyczyść i zacznij od nowa"):
-        del st.session_state.df_editor
-        st.rerun()
+    # --- 4. EKSPORT ---
+    def to_excel(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False)
+        return output.getvalue()
 
-# --- 5. PODGLĄD (OPCJONALNIE) ---
-with st.expander("Zobacz podgląd techniczny (Pandas DataFrame)"):
-    st.write(edited_df)
+    processed_data = to_excel(edited_df)
+
+    st.divider()
+    
+    # Przycisk pobierania z oryginalną nazwą
+    st.download_button(
+        label=f"💾 Zapisz jako: {st.session_state.original_filename}",
+        data=processed_data,
+        file_name=st.session_state.original_filename, # To wymusza nazwę w okienku zapisu
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    
+    if st.button("Usuń wszystko i zacznij od nowa"):
+        st.session_state.df_editor = None
+        st.rerun()
+else:
+    st.info("Wgraj plik Excel, aby rozpocząć edycję.")
