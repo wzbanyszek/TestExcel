@@ -7,29 +7,35 @@ st.set_page_config(page_title="Edytor Excel", layout="wide")
 # --- 1. INICJALIZACJA STANU ---
 if 'df_editor' not in st.session_state:
     st.session_state.df_editor = None
-if 'original_filename' not in st.session_state:
-    st.session_state.original_filename = "nowy_arkusz.xlsx"
+if 'file_id' not in st.session_state:
+    st.session_state.file_id = None
 
-st.title("📂 Edytor z zachowaniem nazwy")
+st.title("📂 Edytor z automatycznym odświeżaniem")
 
 # --- 2. WCZYTYWANIE ---
-uploaded_file = st.file_uploader("Wgraj plik", type=["xlsx"])
+uploaded_file = st.file_uploader("Wgraj plik Excel", type=["xlsx"])
 
 if uploaded_file:
-    # Zapamiętujemy nazwę tylko raz przy wgraniu
-    st.session_state.original_filename = uploaded_file.name
-    # Wczytujemy dane tylko jeśli jeszcze ich nie ma w sesji (żeby edycja nie znikała)
-    if st.session_state.df_editor is None:
+    # SPRAWDZAMY CZY TO NOWY PLIK (porównujemy nazwę i rozmiar jako unikalne ID)
+    current_file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+    
+    if st.session_state.file_id != current_file_id:
+        # Jeśli ID jest inne -> ładujemy nowe dane i aktualizujemy ID
         st.session_state.df_editor = pd.read_excel(uploaded_file)
+        st.session_state.file_id = current_file_id
+        st.session_state.original_filename = uploaded_file.name
+        # Wymuszamy odświeżenie interfejsu
+        st.rerun()
 
-# --- 3. EDYCJA ---
+# --- 3. WYŚWIETLANIE EDYTORA ---
 if st.session_state.df_editor is not None:
+    # Używamy file_id jako części klucza widgetu, aby wymusić jego reset przy nowym pliku
     edited_df = st.data_editor(
         st.session_state.df_editor,
         num_rows="dynamic",
         use_container_width=True,
         hide_index=True,
-        key="editor"
+        key=f"editor_{st.session_state.file_id}" 
     )
 
     # --- 4. EKSPORT ---
@@ -43,16 +49,16 @@ if st.session_state.df_editor is not None:
 
     st.divider()
     
-    # Przycisk pobierania z oryginalną nazwą
     st.download_button(
         label=f"💾 Zapisz jako: {st.session_state.original_filename}",
         data=processed_data,
-        file_name=st.session_state.original_filename, # To wymusza nazwę w okienku zapisu
+        file_name=st.session_state.original_filename,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     
-    if st.button("Usuń wszystko i zacznij od nowa"):
+    if st.button("Usuń i wyczyść wszystko"):
         st.session_state.df_editor = None
+        st.session_state.file_id = None
         st.rerun()
 else:
-    st.info("Wgraj plik Excel, aby rozpocząć edycję.")
+    st.info("Wgraj plik Excel (.xlsx), aby rozpocząć pracę.")
